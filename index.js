@@ -18,7 +18,11 @@ const app = express();
 // middleware
 app.use(
   cors({
-    origin: [process.env.CLIENT_DOMAIN, "http://localhost:5173", "http://localhost:5174"],
+    origin: [
+      process.env.CLIENT_DOMAIN,
+      "https://bookcourier-project.netlify.app",
+      "http://localhost:5173",
+    ],
     credentials: true,
     optionSuccessStatus: 200,
   }),
@@ -84,36 +88,52 @@ const verifySELLER = async (req, res, next) => {
 
 //step-1  amra ekon mongodb te data patabo login and signup
 app.post("/user", async (req, res) => {
-  //ckeck mongodb
-  const userData = req.body;
-  userData.create_at = new Date().toISOString();
-  userData.last_loggendIn = new Date().toISOString();
+  try {
+    const userData = req.body;
 
-  const query = {
-    email: userData.email,
-  };
+    // basic validation
+    if (!userData?.email) {
+      return res.status(400).send({ message: "Email is required" });
+    }
 
-  const alreadyExists = await userCollection.findOne(query);
-  // console.log("user Already Exist", !!alreadyExists);
+    const query = { email: userData.email };
+    const existingUser = await userCollection.findOne(query);
 
-  //jodi age teke user take thohole condition ta run hobe and tar kichu impormation save hobe
-  if (alreadyExists) {
-    // console.log("updating user info");
-    const result = await userCollection.updateOne(query, {
-      $set: {
-        last_loggendIn: new Date().toISOString(),
-      },
+    // user exists → update login time
+    if (existingUser) {
+      const result = await userCollection.updateOne(query, {
+        $set: { lastLoggedIn: new Date() },
+      });
+
+      return res.status(200).send({
+        message: "User login updated",
+        result,
+      });
+    }
+
+    // create new user
+    const newUser = {
+      email: userData.email,
+      displayName: userData.displayName || "",
+      photoURL: userData.photoURL || "",
+      role: "user", // always backend
+      createdAt: new Date(),
+      lastLoggedIn: new Date(),
+    };
+
+    const result = await userCollection.insertOne(newUser);
+
+    res.status(201).send({
+      message: "User created successfully",
+      result,
     });
-    return res.send(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({
+      message: "Internal server error",
+    });
   }
-
-  //jodi user na take tahole amra databse new user ta ke set kore divo
-  // console.log("saving user info");
-  //user work finsished
-  const result = await userCollection.insertOne(userData);
-  res.send(result);
 });
-
 app.post("/books", async (req, res) => {
   const BookData = req.body;
   //save bookCollection
