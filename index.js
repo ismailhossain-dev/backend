@@ -20,8 +20,9 @@ app.use(
   cors({
     origin: [
       process.env.CLIENT_DOMAIN,
-      "https://bookcourier-project.netlify.app",
       "http://localhost:5173",
+      // "https://bookcourier-project.netlify.app",
+      // "http://localhost:5173",
     ],
     credentials: true,
     optionSuccessStatus: 200,
@@ -66,6 +67,8 @@ const ordersCollection = db.collection("orders");
 
 //libarian request collection
 const libarianCollection = db.collection("libarianRequest");
+
+const ContactCollection = db.collection("contactFrom");
 
 //secure libairan user and admin
 const verifyADMIN = async (req, res, next) => {
@@ -355,6 +358,7 @@ app.delete("/my-books/:id", async (req, res) => {
 });
 //
 //secure website work jtw
+//getting role for useRole component
 app.get("/user/role/:email", verifyJWT, async (req, res) => {
   const result = await userCollection.findOne({ email: req.tokenEmail });
   res.send({ role: result?.role });
@@ -377,32 +381,22 @@ app.delete("/orders/:id", async (req, res) => {
 //finishe role work
 //  /mongodb teke data anchi
 app.get("/sixBooks", async (req, res) => {
-  const sixFood = {
-    image: 1,
-    name: 1,
-    category: 1,
-    price: 1,
-    description: 1,
+  const result = await bookCollection.find().limit(8).sort({ price: 1 }).toArray();
 
-    quantity: 1,
-  };
-  const result = await bookCollection.find().limit(6).sort({ price: 1 }).project(sixFood).toArray();
+  res.send(result);
+});
+//AllBooks
+app.get("/allBooks", async (req, res) => {
+  const result = await bookCollection.find().sort({ price: 1 }).toArray();
   // console.log(result);
   res.send(result);
 });
 
-//AllBooks
-app.get("/allBooks", async (req, res) => {
-  const sixFood = {
-    image: 1,
-    name: 1,
-    category: 1,
-    price: 1,
-    description: 1,
-    quantity: 1,
-  };
-  const result = await bookCollection.find().sort({ price: 1 }).project(sixFood).toArray();
-  // console.log(result);
+//Contact from
+
+app.post("/contact", async (req, res) => {
+  const newProduct = req.body;
+  const result = await ContactCollection.insertOne(newProduct);
   res.send(result);
 });
 
