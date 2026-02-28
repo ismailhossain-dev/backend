@@ -252,8 +252,8 @@ app.get("/user/role/:email", verifyJWT, async (req, res) => {
 
 app.delete("/my-inventory/:id", async (req, res) => {
   const id = req.params.id;
-  const qury = { _id: new ObjectId(id) };
-  const result = await ordersCollection.deleteOne(qury);
+  const query = { _id: new ObjectId(id) };
+  const result = await ordersCollection.deleteOne(query);
   res.send(result);
 });
 
