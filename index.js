@@ -65,9 +65,6 @@ const userCollection = db.collection("user");
 //create collection for orders
 const ordersCollection = db.collection("orders");
 
-//libarian request collection
-const libarianCollection = db.collection("libarianRequest");
-
 const ContactCollection = db.collection("contactFrom");
 
 //secure libairan user and admin
@@ -158,6 +155,7 @@ app.get("/books/:id", async (req, res) => {
 //stripe payment work
 app.post("/create-checkout-session", async (req, res) => {
   const paymentInfo = req.body;
+
   // console.log(paymentInfo);
   const session = await stripe.checkout.sessions.create({
     line_items: [
@@ -166,7 +164,7 @@ app.post("/create-checkout-session", async (req, res) => {
           currency: "usd",
           //product_data gola payment from dekabe
           product_data: {
-            name: paymentInfo?.name,
+            name: paymentInfo?.customer.name,
             description: paymentInfo?.description,
             images: [paymentInfo?.image],
           },
@@ -275,87 +273,6 @@ app.delete("/my-orders/:id", async (req, res) => {
   res.send(result);
 });
 
-//create become libarian request save
-app.post("/become-libarian", verifyJWT, async (req, res) => {
-  const email = req.tokenEmail;
-  const alreadyExists = await libarianCollection.findOne({ email });
-  if (alreadyExists) return res.status(409).send({ message: "Already requested, wait " });
-
-  const result = await libarianCollection.insertOne({ email });
-  res.send(result);
-});
-//get all libarian request admi
-app.get("/libarian-request", verifyJWT, verifyADMIN, async (req, res) => {
-  const result = await libarianCollection.find().toArray();
-  res.send(result);
-});
-//user e aksathe sob use ke dekabo manage user page
-app.get("/users", verifyJWT, verifyADMIN, async (req, res) => {
-  const addminEmail = req.tokenEmail;
-  const result = await userCollection.find({ email: { $ne: addminEmail } }).toArray();
-  // $ne korle jey use login ase tar impormation golad dekabe eta asche mongodb teke
-
-  res.send(result);
-});
-
-//
-//updata user role admin and delate libarianCollection
-app.patch("/update-role", verifyJWT, verifyADMIN, async (req, res) => {
-  const { email, role } = req.body;
-  const result = await userCollection.updateOne({ email }, { $set: { role } });
-  await libarianCollection.deleteOne({ email });
-
-  res.send(result);
-});
-
-//
-//manage orders work  for seller akane website scure kaj ta korsi
-app.get("/manage-orders/:email", async (req, res) => {
-  const email = req.params.email;
-  const result = await ordersCollection
-    .find({
-      "seller.email": email,
-    })
-    .toArray();
-  res.send(result);
-});
-
-//my books librarian
-
-app.get("/my-inventory/:email", async (req, res) => {
-  const email = req.params.email;
-
-  const result = await bookCollection.find().toArray();
-
-  res.send(result);
-});
-
-//my books update librarian
-app.patch("/my-books/:id", async (req, res) => {
-  const id = req.params.id;
-  const updatedData = req.body;
-
-  try {
-    const result = await booksCollection.updateOne(
-      { _id: new ObjectId(id) },
-      {
-        $set: updatedData,
-      },
-    );
-
-    res.send(result);
-  } catch (error) {
-    res.status(500).send({ message: "Update failed", error });
-  }
-});
-
-// delete my books librarian
-app.delete("/my-books/:id", async (req, res) => {
-  const id = req.params.id;
-  const query = { _id: new ObjectId(id) };
-  const result = await bookCollection.deleteOne(query);
-  res.send(result);
-});
 //
 //secure website work jtw
 //getting role for useRole component
@@ -380,9 +297,8 @@ app.delete("/orders/:id", async (req, res) => {
 });
 //finishe role work
 //  /mongodb teke data anchi
-app.get("/sixBooks", async (req, res) => {
+app.get("/homeBooks", async (req, res) => {
   const result = await bookCollection.find().limit(8).sort({ price: 1 }).toArray();
-
   res.send(result);
 });
 //AllBooks
@@ -399,7 +315,85 @@ app.post("/contact", async (req, res) => {
   const result = await ContactCollection.insertOne(newProduct);
   res.send(result);
 });
+//admin work
+// Manage users
+app.get("/users", verifyJWT, verifyADMIN, async (req, res) => {
+  const adminEmail = req.tokenEmail;
+  const result = await userCollection.find({ email: { $ne: adminEmail } }).toArray();
 
+  res.send(result);
+});
+//Manage users delete
+app.delete("/users/:id", async (req, res) => {
+  const id = req.params.id;
+  const query = { _id: new ObjectId(id) };
+  const result = await userCollection.deleteOne(query);
+  res.send(result);
+});
+
+//mange user update
+app.patch("/users/:email", async (req, res) => {
+  const email = req.params.email;
+  const userInfo = req.body;
+  console.log(userInfo);
+
+  const query = { email };
+
+  const updateDoc = {
+    $set: {
+      displayName: userInfo.displayName,
+    },
+  };
+
+  const result = await userCollection.updateOne(query, updateDoc);
+  res.send(result);
+});
+
+// Manage Books api
+app.get("/manage-books", async (req, res) => {
+  const result = await ordersCollection.find().toArray();
+  res.send(result);
+});
+//profile update api
+app.patch("/users/:email", async (req, res) => {
+  const email = req.params.email;
+  console.log(email);
+  const profileInfo = req.body;
+
+  const query = { email: email };
+  const updateDoc = {
+    $set: {
+      displayName: profileInfo.displayName,
+      photoURL: profileInfo.photoURL,
+    },
+  };
+
+  const result = await userCollection.updateOne(query, updateDoc);
+  res.send(result);
+});
+
+//mange books delete api
+app.delete("/manage-books/:id", async (req, res) => {
+  const id = req.params.id;
+  const query = { _id: new ObjectId(id) };
+  const result = await ordersCollection.deleteOne(query);
+  res.send(result);
+});
+
+//mange books update api
+app.patch("/manage-books/:email", async (req, res) => {
+  const email = req.params.email;
+  const bookInfo = req.body;
+
+  const query = { email: email };
+
+  const updateDoc = {
+    $set: bookInfo,
+  };
+
+  const result = await ordersCollection.updateOne(query, updateDoc);
+  res.send(result);
+});
 // Send a ping to confirm a successful connection
 // await client.db("admin").command({ ping: 1 });
 console.log("Pinged your deployment. You successfully connected to MongoDB!");
