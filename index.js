@@ -30,7 +30,6 @@ app.use(
 );
 app.use(express.json());
 
-// jwt middlewares and amra akane firebase token take verify kortesi eta korar main resion hoytese website secure er jorno
 const verifyJWT = async (req, res, next) => {
   const token = req?.headers?.authorization?.split(" ")[1];
   // console.log(token);
@@ -194,6 +193,8 @@ app.post("/payment-success", async (req, res) => {
   const book = await bookCollection.findOne({
     _id: new ObjectId(session.metadata.bookId),
   });
+  // console.log(book);
+
   //amra ekane cheek data ta age tekge ki database ase kina
   const order = await ordersCollection.findOne({
     transactionId: session.payment_intent,
@@ -208,8 +209,8 @@ app.post("/payment-success", async (req, res) => {
       transactionId: session.payment_intent,
       customer: session.metadata.customer,
       status: "pending",
-      seller: book.seller,
-      name: book.name,
+      seller: book.details.publisher,
+      name: book.title,
       category: book.category,
       quantity: 1,
       price: session.amount_total / 100,
@@ -264,6 +265,16 @@ app.get("/orders/:email", async (req, res) => {
 });
 
 //
+app.get("/my-orders/:email", async (req, res) => {
+  try {
+    const email = req.params.email;
+    const orders = await ordersCollection.find({ customer: email }).toArray();
+    res.send(orders);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send({ error: "Failed to fetch orders" });
+  }
+});
 
 app.delete("/my-orders/:id", async (req, res) => {
   const id = req.params.id;
