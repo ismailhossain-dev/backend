@@ -16,11 +16,11 @@ admin.initializeApp({
 const app = express();
 app.use(cors());
 
-// app.use(
-//   cors({
-//     origin: [process.env.CLIENT_DOMAIN, "https://bookcourier-project.netlify.app"],
-//   }),
-// );
+app.use(
+  cors({
+    origin: [process.env.CLIENT_DOMAIN, "https://bookcourier-project.netlify.app"],
+  }),
+);
 app.use(express.json());
 
 const verifyJWT = async (req, res, next) => {
@@ -147,7 +147,7 @@ app.post("/create-checkout-session", async (req, res) => {
     },
     customer_email: paymentInfo.customer.email,
     success_url: `${process.env.CLIENT_DOMAIN}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `http://localhost:3000/${paymentInfo.bookId}`,
+    cancel_url: `https://backend-bookcourier.vercel.app/${paymentInfo.bookId}`,
   });
   res.send({ url: session.url });
 });
@@ -354,7 +354,7 @@ app.patch("/manage-books/:email", async (req, res) => {
 console.log("Pinged your deployment. You successfully connected to MongoDB!");
 
 app.get("/", (req, res) => {
-  res.send("Nice Assignment 11");
+  res.send("Nice Bookcourier project");
 });
 
 app.listen(port, () => {
