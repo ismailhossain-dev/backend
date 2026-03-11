@@ -14,19 +14,13 @@ admin.initializeApp({
 });
 
 const app = express();
+app.use(cors());
 
-app.use(
-  cors({
-    origin: [
-      process.env.CLIENT_DOMAIN,
-      "http://localhost:5173",
-      // "https://bookcourier-project.netlify.app",
-      // "http://localhost:5173",
-    ],
-    credentials: true,
-    optionSuccessStatus: 200,
-  }),
-);
+// app.use(
+//   cors({
+//     origin: [process.env.CLIENT_DOMAIN, "https://bookcourier-project.netlify.app"],
+//   }),
+// );
 app.use(express.json());
 
 const verifyJWT = async (req, res, next) => {
@@ -153,7 +147,7 @@ app.post("/create-checkout-session", async (req, res) => {
     },
     customer_email: paymentInfo.customer.email,
     success_url: `${process.env.CLIENT_DOMAIN}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `https://bookcourier-two.vercel.app/${paymentInfo.bookId}`,
+    cancel_url: `http://localhost:3000/${paymentInfo.bookId}`,
   });
   res.send({ url: session.url });
 });
@@ -220,7 +214,7 @@ app.get("/orders/:email", async (req, res) => {
 app.get("/all-orders", async (req, res) => {
   try {
     const result = await ordersCollection.find().toArray();
-    console.log(result);
+    // console.log(result);
     res.status(200).json(result);
   } catch (error) {
     console.error(error);
