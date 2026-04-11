@@ -16,9 +16,20 @@ admin.initializeApp({
 const app = express();
 app.use(cors());
 
+//client link
+// app.use(
+//   cors({
+//     origin: [process.env.CLIENT_DOMAIN, "https://bookcourier-theta.vercel.app"],
+//   }),
+// );
+// my new cors
 app.use(
   cors({
-    origin: [process.env.CLIENT_DOMAIN, "https://bookcourier-project.netlify.app"],
+    origin: [
+      "http://localhost:3000",
+      "http://localhost:5173",
+      "https://backend-bookcourier.vercel.app",
+    ],
   }),
 );
 app.use(express.json());
@@ -146,7 +157,7 @@ app.post("/create-checkout-session", async (req, res) => {
       customer: paymentInfo?.customer.email,
     },
     customer_email: paymentInfo.customer.email,
-    success_url: `${process.env.CLIENT_DOMAIN}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+    success_url: `https://bookcourier-theta.vercel.app/payment-success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `https://backend-bookcourier.vercel.app/${paymentInfo.bookId}`,
   });
   res.send({ url: session.url });
