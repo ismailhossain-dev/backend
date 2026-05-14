@@ -271,6 +271,7 @@ app.delete("/orders/:id", async (req, res) => {
 
 app.get("/homeBooks", async (req, res) => {
   const result = await bookCollection.find().limit(8).sort({ price: 1 }).toArray();
+  // console.log("ami home books boltechi",result)
   res.send(result);
 });
 
@@ -365,7 +366,7 @@ app.patch("/manage-books/:email", async (req, res) => {
 console.log("Pinged your deployment. You successfully connected to MongoDB!");
 
 app.get("/", (req, res) => {
-  res.send("Nice Bookcourier project");
+  res.send("Nice BookCourier project");
 });
 
 app.listen(port, () => {
