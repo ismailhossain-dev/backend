@@ -17,21 +17,26 @@ const app = express();
 app.use(cors());
 
 //client link
-// app.use(
-//   cors({
-//     origin: [process.env.CLIENT_DOMAIN, "https://bookcourier-theta.vercel.app"],
-//   }),
-// );
-// my new cors
 app.use(
   cors({
     origin: [
-      "http://localhost:3000",
-      "http://localhost:5173",
-      "https://backend-bookcourier.vercel.app",
+      process.env.CLIENT_DOMAIN,
+      "https://bookcourier12.vercel.app",
+      "http://localhost:5173", // যদি Vite ব্যবহার করো
     ],
-  }),
+    credentials: true,
+  })
 );
+// my new cors
+// app.use(
+//   cors({
+//     origin: [
+//       "http://localhost:3000",
+//       "https://bookcourier12.vercel.app",
+//       "https://backend-bookcourier.vercel.app",
+//     ],
+//   }),
+// );
 app.use(express.json());
 
 const verifyJWT = async (req, res, next) => {
@@ -80,6 +85,8 @@ const verifySELLER = async (req, res, next) => {
 app.post("/user", async (req, res) => {
   try {
     const userData = req.body;
+
+    // console.log("gogole login backend", userData);
     if (!userData?.email) {
       return res.status(400).send({ message: "Email is required" });
     }
@@ -157,11 +164,13 @@ app.post("/create-checkout-session", async (req, res) => {
       customer: paymentInfo?.customer.email,
     },
     customer_email: paymentInfo.customer.email,
-    success_url: `https://bookcourier-theta.vercel.app/payment-success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `https://backend-bookcourier.vercel.app/${paymentInfo.bookId}`,
+    success_url: `https://bookcourier12.vercel.app/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `https://bookcourier12.vercel.app/${paymentInfo.bookId}`,
   });
   res.send({ url: session.url });
 });
+
+//stripe and orders 
 
 app.post("/payment-success", async (req, res) => {
   const { sessionId } = req.body;
@@ -188,6 +197,8 @@ app.post("/payment-success", async (req, res) => {
       image: book?.image,
     };
     const result = await ordersCollection.insertOne(orderInfo);
+
+    // console.log("Order inserted 200:", result);
     await bookCollection.updateOne(
       { _id: new ObjectId(session.metadata.bookId) },
       { $inc: { quantity: -1 } },
