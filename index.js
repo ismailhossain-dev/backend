@@ -64,6 +64,7 @@ const bookCollection = db.collection("books");
 const userCollection = db.collection("user");
 const ordersCollection = db.collection("orders");
 const ContactCollection = db.collection("contactFrom");
+const wishlistCollection=db.collection("wishlist")
 
 const verifyADMIN = async (req, res, next) => {
   const email = req.tokenEmail;
@@ -139,6 +140,69 @@ app.get("/books/:id", async (req, res) => {
   const id = req.params.id;
   const result = await bookCollection.findOne({ _id: new ObjectId(id) });
   res.send(result);
+});
+
+//wishlist post 
+app.post("/wishlist", async (req, res) => {
+  try {
+    const wishlistData = req.body;
+    const { email, productId } = wishlistData;
+
+    // ১. চেক করা যে একই email এবং productId দিয়ে আগেই ডাটা আছে কিনা
+    const query = { email, productId };
+    const existingWishlistItem = await wishlistCollection.findOne(query);
+
+    if (existingWishlistItem) {
+      // যদি আগে থেকেই থাকে তবে ৪০৯ (Conflict) স্ট্যাটাস ও মেসেজ পাঠাবে
+      return res.status(409).send({
+        success: false,
+        message: "This book is already in your wishlist!",
+      });
+    }
+
+    // ২. ডাটা না থাকলে নতুন আইটেম ইনসার্ট করবে
+    const result = await wishlistCollection.insertOne(wishlistData);
+    res.send({
+      success: true,
+      insertedId: result.insertedId,
+      message: "Added to wishlist successfully!",
+    });
+  } catch (error) {
+    console.error("Error adding to wishlist:", error);
+    res.status(500).send({ success: false, message: "Internal server error" });
+  }
+});
+
+//wishlist get 
+
+app.get("/wishlist/:email", async (req, res) => {
+  try {
+    const email = req.params.email;
+
+    const result = await wishlistCollection.find({ email }).toArray();
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ message: "Failed to fetch wishlist data", error });
+  }
+});
+
+//wishlist delete
+
+app.delete("/wishlist/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+    const query = { _id: new ObjectId(id) }; 
+    const result = await wishlistCollection.deleteOne(query);
+
+    if (result.deletedCount === 1) {
+      res.send({ success: true, deletedCount: 1, message: "Item removed successfully" });
+    } else {
+      res.status(404).send({ success: false, message: "Item not found" });
+    }
+  } catch (error) {
+    console.error("Error deleting wishlist item:", error);
+    res.status(500).send({ success: false, message: "Internal server error", error });
+  }
 });
 
 app.post("/create-checkout-session", async (req, res) => {
@@ -337,6 +401,67 @@ app.patch("/user-profile/:email", async (req, res) => {
 
   const result = await userCollection.updateOne(query, updateDoc);
   res.send(result);
+});
+
+
+app.get("/get-all-overview/:email", async (req, res) => {
+  try {
+    const email = req.params.email;
+
+    // ১. ইউজার সর্বমোট কয়টি অর্ডার করেছে
+    const totalOrders = await ordersCollection.countDocuments({
+      customer: email,
+    });
+
+    // ২. পেন্ডিং অর্ডার গণনা
+    const pendingOrders = await ordersCollection.countDocuments({
+      customer: email,
+      status: "pending",
+    });
+
+    // ৩. ডেলিভার্ড / কমপ্লিটেড অর্ডার গণনা
+    const completedOrders = await ordersCollection.countDocuments({
+      customer: email,
+      status: "completed",
+    });
+
+    // ৪. উইশলিস্টে থাকা বইয়ের সংখ্যা গণনা
+    const wishlistCount = await wishlistCollection.countDocuments({
+      email: email,
+    });
+
+    // ৫. চার্টের জন্য মাসভিত্তিক অর্ডারের হিসাব (Chart Data)
+    const orders = await ordersCollection
+      .find({ customer: email })
+      .toArray();
+
+    // মাস অনুযায়ী অর্ডার গণনার জন্য একটি অবজেক্ট
+    const monthlyCounts = {
+      Jan: 0, Feb: 0, Mar: 0, Apr: 0, May: 0, Jun: 0,
+      Jul: 0, Aug: 0, Sep: 0, Oct: 0, Nov: 0, Dec: 0,
+    };
+
+    orders.forEach((order) => {
+      // যদি অর্ডারে তারিখ থাকে, সেখান থেকে মাস বের করবে (ডিফল্ট বর্তমান সময় ধরে নেবে)
+      const date = order.createdAt ? new Date(order.createdAt) : new Date();
+      const monthName = date.toLocaleString("en-US", { month: "short" });
+      if (monthlyCounts[monthName] !== undefined) {
+        monthlyCounts[monthName] += 1;
+      }
+    });
+
+    // রেসপন্স পাঠানো
+    res.send({
+      totalOrders,
+      pendingOrders,
+      completedOrders,
+      wishlistCount,
+      monthlyCounts,
+    });
+  } catch (error) {
+    console.error("Error fetching overview data:", error);
+    res.status(500).send({ message: "Failed to fetch overview data" });
+  }
 });
 
 app.get("/manage-books", async (req, res) => {
