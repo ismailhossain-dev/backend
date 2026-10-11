@@ -22,21 +22,12 @@ app.use(
     origin: [
       process.env.CLIENT_DOMAIN,
       "https://bookcourier12.vercel.app",
-      "http://localhost:5173", // যদি Vite ব্যবহার করো
+      "http://localhost:5173",
     ],
     credentials: true,
   })
 );
-// my new cors
-// app.use(
-//   cors({
-//     origin: [
-//       "http://localhost:3000",
-//       "https://bookcourier12.vercel.app",
-//       "https://backend-bookcourier.vercel.app",
-//     ],
-//   }),
-// );
+
 app.use(express.json());
 
 const verifyJWT = async (req, res, next) => {
@@ -65,6 +56,19 @@ const userCollection = db.collection("user");
 const ordersCollection = db.collection("orders");
 const ContactCollection = db.collection("contactFrom");
 const wishlistCollection=db.collection("wishlist")
+
+// Create unique index for transactionId
+ordersCollection
+  .createIndex(
+    { transactionId: 1 },
+    { unique: true }
+  )
+  .then(() => {
+    console.log("Orders unique index created successfully");
+  })
+  .catch((error) => {
+    console.error("Index creation failed:", error);
+  });
 
 const verifyADMIN = async (req, res, next) => {
   const email = req.tokenEmail;
@@ -148,19 +152,18 @@ app.post("/wishlist", async (req, res) => {
     const wishlistData = req.body;
     const { email, productId } = wishlistData;
 
-    // ১. চেক করা যে একই email এবং productId দিয়ে আগেই ডাটা আছে কিনা
+  
     const query = { email, productId };
     const existingWishlistItem = await wishlistCollection.findOne(query);
 
     if (existingWishlistItem) {
-      // যদি আগে থেকেই থাকে তবে ৪০৯ (Conflict) স্ট্যাটাস ও মেসেজ পাঠাবে
+     
       return res.status(409).send({
         success: false,
         message: "This book is already in your wishlist!",
       });
     }
 
-    // ২. ডাটা না থাকলে নতুন আইটেম ইনসার্ট করবে
     const result = await wishlistCollection.insertOne(wishlistData);
     res.send({
       success: true,
@@ -228,59 +231,207 @@ app.post("/create-checkout-session", async (req, res) => {
       customer: paymentInfo?.customer.email,
     },
     customer_email: paymentInfo.customer.email,
-    success_url: `https://bookcourier12.vercel.app/payment-success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `https://bookcourier12.vercel.app/${paymentInfo.bookId}`,
+    success_url: `${process.env.CLIENT_DOMAIN}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${process.env.CLIENT_DOMAIN}/${paymentInfo.bookId}`,
   });
   res.send({ url: session.url });
 });
 
-//stripe and orders 
 
+
+// Payment Success API
 app.post("/payment-success", async (req, res) => {
-  const { sessionId } = req.body;
-  const session = await stripe.checkout.sessions.retrieve(sessionId);
-  const book = await bookCollection.findOne({
-    _id: new ObjectId(session.metadata.bookId),
-  });
+  try {
+    const { sessionId } = req.body;
 
-  const order = await ordersCollection.findOne({
-    transactionId: session.payment_intent,
-  });
+    if (!sessionId) {
+      return res.status(400).json({
+        success: false,
+        message: "Session ID is required",
+      });
+    }
 
-  if (session.status === "complete" && book && !order) {
+    // 1. Retrieve Stripe Session
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+    console.log("Stripe Session:", {
+      id: session.id,
+      status: session.status,
+      payment_status: session.payment_status,
+      metadata: session.metadata,
+    });
+
+    // 2. Verify payment
+    if (
+      session.status !== "complete" ||
+      session.payment_status !== "paid"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Payment not completed",
+      });
+    }
+
+    // 3. Get metadata
+    const bookId = session.metadata?.bookId;
+
+    const customer =
+      session.metadata?.customer ||
+      session.customer_details?.email;
+
+    if (!bookId || !ObjectId.isValid(bookId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid Book ID",
+      });
+    }
+
+    if (!customer) {
+      return res.status(400).json({
+        success: false,
+        message: "Customer email not found",
+      });
+    }
+
+    // 4. Get Transaction ID
+    const transactionId = session.payment_intent;
+
+    if (!transactionId || typeof transactionId !== "string") {
+      return res.status(400).json({
+        success: false,
+        message: "Transaction ID not found",
+      });
+    }
+
+    // 5. Check duplicate order
+    const existingOrder = await ordersCollection.findOne({
+      transactionId,
+    });
+
+    if (existingOrder) {
+      return res.status(200).json({
+        success: true,
+        message: "Order already exists",
+        orderId: existingOrder._id,
+        transactionId,
+      });
+    }
+
+    // 6. Find Book
+    const book = await bookCollection.findOne({
+      _id: new ObjectId(bookId),
+    });
+
+    if (!book) {
+      return res.status(404).json({
+        success: false,
+        message: "Book not found",
+      });
+    }
+
+    // 7. Validate payment amount
+    const expectedAmount = Math.round(Number(book.price) * 100);
+
+    if (
+      session.currency !== "usd" ||
+      !Number.isSafeInteger(expectedAmount) ||
+      expectedAmount <= 0 ||
+      session.amount_total !== expectedAmount
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Payment amount or currency mismatch",
+      });
+    }
+
+    // 8. Prepare order
     const orderInfo = {
-      bookId: session.metadata.bookId,
-      transactionId: session.payment_intent,
-      customer: session.metadata.customer,
+      bookId,
+      sessionId: session.id,
+      transactionId,
+      customer,
       status: "pending",
-      seller: book.details.publisher,
+      paymentStatus: "paid",
+      seller: book.details?.publisher || "",
       name: book.title,
       category: book.category,
       quantity: 1,
       price: session.amount_total / 100,
-      image: book?.image,
+      image: book.image || "",
+      createdAt: new Date(),
     };
-    const result = await ordersCollection.insertOne(orderInfo);
 
-    // console.log("Order inserted 200:", result);
-    await bookCollection.updateOne(
-      { _id: new ObjectId(session.metadata.bookId) },
-      { $inc: { quantity: -1 } },
+    // 9. Save order
+    let result;
+
+    try {
+      result = await ordersCollection.insertOne(orderInfo);
+    } catch (error) {
+      // Handle duplicate requests
+      if (error.code === 11000) {
+        const order = await ordersCollection.findOne({
+          transactionId,
+        });
+
+        return res.status(200).json({
+          success: true,
+          message: "Order already exists",
+          orderId: order?._id,
+          transactionId,
+        });
+      }
+
+      throw error;
+    }
+
+    console.log("Order Saved:", result.insertedId);
+
+    // 10. Update stock only when quantity is available
+    const stockResult = await bookCollection.updateOne(
+      {
+        _id: new ObjectId(bookId),
+        quantity: { $gte: 1 },
+      },
+      {
+        $inc: { quantity: -1 },
+      }
     );
 
-    return res.send({
-      transactionId: session.payment_intent,
+    console.log("Stock Update:", stockResult.modifiedCount);
+
+    if (stockResult.modifiedCount === 0) {
+      console.warn(
+        "Order saved, but stock was not reduced:",
+        result.insertedId
+      );
+    }
+
+    // 11. Success response
+    return res.status(201).json({
+      success: true,
+      message:
+        stockResult.modifiedCount === 1
+          ? "Order saved successfully"
+          : "Order saved; stock requires review",
       orderId: result.insertedId,
+      transactionId,
+      stockUpdated: stockResult.modifiedCount === 1,
+    });
+
+  } catch (error) {
+    console.error("Payment Success Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to process payment order",
     });
   }
-
-  res.send({
-    transactionId: session.payment_intent,
-    orderId: order?._id,
-  });
 });
 
+
 app.get("/my-orders", verifyJWT, async (req, res) => {
+
+  console.log(email)
   const result = await ordersCollection.find({ customer: req.tokenEmail }).toArray();
   res.send(result);
 });
@@ -408,41 +559,36 @@ app.get("/get-all-overview/:email", async (req, res) => {
   try {
     const email = req.params.email;
 
-    // ১. ইউজার সর্বমোট কয়টি অর্ডার করেছে
     const totalOrders = await ordersCollection.countDocuments({
       customer: email,
     });
 
-    // ২. পেন্ডিং অর্ডার গণনা
     const pendingOrders = await ordersCollection.countDocuments({
       customer: email,
       status: "pending",
     });
 
-    // ৩. ডেলিভার্ড / কমপ্লিটেড অর্ডার গণনা
+
     const completedOrders = await ordersCollection.countDocuments({
       customer: email,
       status: "completed",
     });
 
-    // ৪. উইশলিস্টে থাকা বইয়ের সংখ্যা গণনা
+
     const wishlistCount = await wishlistCollection.countDocuments({
       email: email,
     });
 
-    // ৫. চার্টের জন্য মাসভিত্তিক অর্ডারের হিসাব (Chart Data)
     const orders = await ordersCollection
       .find({ customer: email })
       .toArray();
-
-    // মাস অনুযায়ী অর্ডার গণনার জন্য একটি অবজেক্ট
+    //date
     const monthlyCounts = {
       Jan: 0, Feb: 0, Mar: 0, Apr: 0, May: 0, Jun: 0,
       Jul: 0, Aug: 0, Sep: 0, Oct: 0, Nov: 0, Dec: 0,
     };
 
     orders.forEach((order) => {
-      // যদি অর্ডারে তারিখ থাকে, সেখান থেকে মাস বের করবে (ডিফল্ট বর্তমান সময় ধরে নেবে)
       const date = order.createdAt ? new Date(order.createdAt) : new Date();
       const monthName = date.toLocaleString("en-US", { month: "short" });
       if (monthlyCounts[monthName] !== undefined) {
@@ -450,7 +596,6 @@ app.get("/get-all-overview/:email", async (req, res) => {
       }
     });
 
-    // রেসপন্স পাঠানো
     res.send({
       totalOrders,
       pendingOrders,
